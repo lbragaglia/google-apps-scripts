@@ -1,77 +1,107 @@
 var ss = SpreadsheetApp.getActiveSpreadsheet();
-//if (ss.getSheetByName("impostazioni").getRange("B1").getValue()!=""){
-//  var TZ = CalendarApp.openByName(ss.getSheetByName("impostazioni").getRange("B1").getValue()).getTimeZone();
-//}
 var conf = {
   calendario: 'B1',
-  notifiche: 'B2'
+  notifiche: 'B2',
+  titolo: 'B4',
+  descrizione: 'B5'
 };
 
 function _getConf(prop) {
   return SpreadsheetApp.getActiveSpreadsheet().getSheetByName('impostazioni').getRange(conf[prop]).getValue();
 }
-function _getCalendario() {
+function _getNomeCalendario() {
   return _getConf('calendario');
 }
+function _getCalendar() {
+  return CalendarApp.getCalendarById(_getNomeCalendario());
+}
+
 function onOpen() {
-  if (_getCalendario() == "") {
+  if (_getNomeCalendario() == "") {
     ss.toast("Click on setup to start", "Notifiche", 10);
   }
   var menuEntries = [ {name: "Aggiorna calendario", functionName: "importIntoCalendar"} ];
   ss.addMenu("Calendario", menuEntries);
 }
 
-
 function importIntoCalendar(){
-  var calendario = _getCalendario();
+  var calendario = _getNomeCalendario();
   if (!calendario) {
     return;
   }
   var dataSheet = ss.getSheetByName("tavoli");
   var dataRange = dataSheet.getRange(2, 1, dataSheet.getMaxRows(), dataSheet.getMaxColumns());
 
-  var templateSheet = ss.getSheetByName("Templates");
-  var calendarName = templateSheet.getRange("E1").getValue();
-  var siteUrl = templateSheet.getRange("E2").getValue();
-  
-  var cal =  CalendarApp.getCalendarsByName(calendario)[0];
-  var eventTitleTemplate = templateSheet.getRange("E3").getValue();
-  var descriptionTemplate = templateSheet.getRange("E4").getValue();  
-  var siteTemplate = templateSheet.getRange("E5").getValue(); 
+  var cal =  _getCalendar();
+  var TZ = cal.getTimeZone();
+  var eventTitleTemplate = _getConf('titolo');
+  var descriptionTemplate = _getConf('descrizione');
 
-  // Create one JavaScript object per row of data.
-  objects = getRowsData(dataSheet, dataRange);
-
-  // For every row object, create a personalized email from a template and send
-  // it to the appropriate person.
-  for (var i = 0; i < objects.length; ++i) {
-      // Get a row object
-      var rowData = objects[i];
-      if (rowData.eventId && rowData.eventTitle && rowData.action == "Y" ){
-        var eventTitle = fillInTemplateFromObject(eventTitleTemplate, rowData);
-        var description = fillInTemplateFromObject(descriptionTemplate, rowData);
-        var siteText = fillInTemplateFromObject(siteTemplate, rowData);
-        // add to calendar bit
-        if(rowData.endDate == "All-day"){
-           var eventid = cal.createAllDayEvent(eventTitle, rowData.startDate, rowData.endDate, {location:rowData.location, description: description}).getId();
-        }
-        else{
-          var eventid = cal.createEvent(eventTitle, rowData.startDate, rowData.endDate, {location:rowData.location, description: description}).getId();
-        }
-        var events = cal.getEvents(rowData.startDate, rowData.endDate);
-        var event = getEvent(events, eventid);
-        
-      
-        dataSheet.getRange(i+2, 1, 1, 1).setValue("");
-        dataSheet.getRange(i+2, 2, 1, 1).setValue("Added "+ Utilities.formatDate(new Date(), TZ, "dd MMM yy HH:mm")).setBackgroundRGB(221, 221, 221);
-        dataSheet.getRange(i+2,1,1,dataSheet.getMaxColumns()).setBackgroundRGB(221, 221, 221);
-        // Make sure the cell is updated right away in case  the script is interrupted
-        SpreadsheetApp.flush();
+  var banchetti = getRowsData(dataSheet, dataRange);
+  for (var i = 0; i < banchetti.length; ++i) {
+    var banchetto = banchetti[i];
+    if (!banchetto.confermato){
+      continue;
+    }
+    var start = _toDate(banchetto.data, banchetto.da); 
+    var end = _toDate(banchetto.data, banchetto.a);
+    
+    var event;
+    if (banchetto.idCalendario) {
+      event = _getEvent(cal, start, end, banchetto.idCalendario);
+      if (event) {
+        event.deleteEvent();
       }
-  }  
+    }
+    
+    Logger.log('Crea evento #' + i + ' ...');
+    var eventTitle = fillInTemplateFromObject(eventTitleTemplate, banchetto);
+    var description = fillInTemplateFromObject(descriptionTemplate, banchetto);
+    var eventId = cal.createEvent(eventTitle, start, end, {location:banchetto.luogo, description: description}).getId();
+    Logger.log('Evento #' + i + ' creato con id [' + eventId + ']');
+    
+    event = _getEvent(cal, start, end, eventId);
+    if (!event) {
+      Browser.msgBox("Evento non trovato - function getEvents");
+    }
+    
+    dataSheet.getRange(i+2, 1, 1, 1).setValue(eventId);
+    //"Added "+ Utilities.formatDate(new Date(), TZ, "dd MMM yy HH:mm")
+    dataSheet.getRange(i+2, 2, 1, 1).setValue(new Date()).setBackgroundRGB(221, 221, 221);
+    dataSheet.getRange(i+2,1,1,dataSheet.getMaxColumns()).setBackgroundRGB(221, 221, 221);
+    // Make sure the cell is updated right away in case  the script is interrupted
+    SpreadsheetApp.flush();
+  }
   ss.toast("People can now register to those events", "Events imported");
 }
 
+function _toDate(data, ora) {
+  var datetime;
+  if (data instanceof Date) {
+    datetime = new Date(data.getTime());
+    datetime.setHours(ora);
+  } else {
+    var parts = data.split('/');
+    new Date(parts[2], parts[1], parts[0], ora);
+  }
+  return datetime;
+}
+function _getEvent(cal, from, to, eventId) {
+  var events = cal.getEvents(from, to);
+  return getEvent(events, eventId);
+}
+
+// http://code.google.com/p/google-apps-script-issues/issues/detail?id=264#c35
+function getEvent(events, eventID) {
+  for (var i in events) {
+    if (events[i].getId() == eventID) {
+      var event = events[i];
+      return event;
+    }
+  }
+  //Browser.msgBox("Event not found - function getEvents");
+  //return event; //last one!?
+}
 
 // Replaces markers in a template string with values define in a JavaScript data object.
 // Arguments:
@@ -85,6 +115,9 @@ function fillInTemplateFromObject(template, data) {
   // Search for all the variables to be replaced, for instance ${"Column name"}
   var templateVars = template.match(/\$\{\"[^\"]+\"\}/g);
 
+  if (!templateVars) {
+    return email;
+  }
   // Replace variables from the template with the actual values from the data object.
   // If no value is available, replace with the empty string.
   for (var i = 0; i < templateVars.length; ++i) {
