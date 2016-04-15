@@ -45,6 +45,8 @@ function importIntoCalendar(){
     }
     var start = _toDate(banchetto.data, banchetto.da); 
     var end = _toDate(banchetto.data, banchetto.a);
+
+    _geocode(dataSheet, i+2);
     
     var event;
     if (banchetto.idCalendario) {
@@ -73,6 +75,33 @@ function importIntoCalendar(){
     SpreadsheetApp.flush();
   }
   ss.toast("People can now register to those events", "Events imported");
+}
+
+function _geocode(cells, row) {
+  var addressColumn = 5;
+  var addressRow = row;
+  
+  var latColumn = addressColumn + 1;
+  var lngColumn = addressColumn + 2;
+  
+  var geocoder = Maps.newGeocoder().setRegion('it');
+  var location;
+  
+  var address = cells.getRange(addressRow, addressColumn).getValue();
+  Logger.log(address);
+  // Geocode the address and plug the lat, lng pair into the
+  // 2nd and 3rd elements of the current range row.
+  location = geocoder.geocode(address);
+  Logger.log(location);
+  // Only change cells if geocoder seems to have gotten a
+  // valid response.
+  if (location.status == 'OK') {
+    lat = location["results"][0]["geometry"]["location"]["lat"];
+    lng = location["results"][0]["geometry"]["location"]["lng"];
+    
+    cells.getRange(addressRow, latColumn).setValue(lat);
+    cells.getRange(addressRow, lngColumn).setValue(lng);
+  }
 }
 
 function _toDate(data, ora) {
