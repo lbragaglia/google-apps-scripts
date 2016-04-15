@@ -83,16 +83,20 @@ function _geocode(cells, row) {
   
   var latColumn = addressColumn + 1;
   var lngColumn = addressColumn + 2;
+
+  if (cells.getRange(addressRow, latColumn).getValue() && cells.getRange(addressRow, lngColumn).getValue()) {
+    return;
+  }
   
   var geocoder = Maps.newGeocoder().setRegion('it');
   var location;
   
   var address = cells.getRange(addressRow, addressColumn).getValue();
-  Logger.log(address);
+
   // Geocode the address and plug the lat, lng pair into the
   // 2nd and 3rd elements of the current range row.
   location = geocoder.geocode(address);
-  Logger.log(location);
+
   // Only change cells if geocoder seems to have gotten a
   // valid response.
   if (location.status == 'OK') {
