@@ -79,13 +79,29 @@ function _toDate(data, ora) {
   var datetime;
   if (data instanceof Date) {
     datetime = new Date(data.getTime());
-    datetime.setHours(ora);
+    datetime.setHours(_toHours(ora));
+    datetime.setMinutes(_toMinutes(ora));
   } else {
     var parts = data.split('/');
-    new Date(parts[2], parts[1], parts[0], ora);
+    new Date(parts[2], parts[1], parts[0], _toHours(ora), _toMinutes(ora));
   }
   return datetime;
 }
+function _toHours(ora) {
+  var hours = ora;
+  if (String(ora).indexOf(':') !== -1) {
+    hours = String(ora).split(':')[0];
+  }
+  return hours;
+}
+function _toMinutes(ora) {
+  var minutes = 0;
+  if (String(ora).indexOf(':') !== -1) {
+    minutes = String(ora).split(':')[1];
+  }
+  return minutes;
+}
+
 function _getEvent(cal, from, to, eventId) {
   var events = cal.getEvents(from, to);
   return getEvent(events, eventId);
